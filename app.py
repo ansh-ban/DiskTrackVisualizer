@@ -90,58 +90,101 @@ def look(requests, head, direction):
             current = r
     return seek_sequence, total_seek
 
-def cscan(requests, head, cylinders):
+def cscan(requests, head, cylinders, direction='right'):
     seek_sequence = []
     total_seek = 0
     current = head
     left = sorted([r for r in requests if r < head])
     right = sorted([r for r in requests if r >= head])
 
-    for r in right:
-        seek_sequence.append(r)
-        total_seek += abs(current - r)
-        current = r
-
-    if current != cylinders - 1:
-        total_seek += (cylinders - 1) - current
+    if direction == 'left':
+        # Scan leftwards first
+        left_desc = sorted([r for r in requests if r <= head], reverse=True)
+        right_desc = sorted([r for r in requests if r > head], reverse=True)
+        
+        for r in left_desc:
+            seek_sequence.append(r)
+            total_seek += abs(current - r)
+            current = r
+        
+        if current != 0:
+            total_seek += current
+            current = 0
+            seek_sequence.append(current)  # Start of disk
+        
+        total_seek += (cylinders - 1)  # Jump from start to end
         current = cylinders - 1
-        seek_sequence.append(current)  # Include end of disk
-
-    total_seek += current  # Move from end to start
-    current = 0
-    seek_sequence.append(current)  # Include start of disk
-
-    for r in left:
-        seek_sequence.append(r)
-        total_seek += abs(current - r)
-        current = r
-
-    return seek_sequence, total_seek
-
-def clook(requests, head):
-    seek_sequence = []
-    total_seek = 0
-    current = head
-    left = sorted([r for r in requests if r < head])
-    right = sorted([r for r in requests if r >= head])
-
-    for r in right:
-        seek_sequence.append(r)
-        total_seek += abs(current - r)
-        current = r
-    if left:
-        total_seek += abs(current - left[0])
-        current = left[0]
-        seek_sequence.append(current)
-        for r in left[1:]:
+        seek_sequence.append(current)  # End of disk
+        
+        for r in right_desc:
+            seek_sequence.append(r)
+            total_seek += abs(current - r)
+            current = r
+    else:
+        # Scan rightwards first
+        for r in right:
+            seek_sequence.append(r)
+            total_seek += abs(current - r)
+            current = r
+        
+        if current != cylinders - 1:
+            total_seek += (cylinders - 1) - current
+            current = cylinders - 1
+            seek_sequence.append(current)  # End of disk
+        
+        total_seek += current  # Jump from end to start
+        current = 0
+        seek_sequence.append(current)  # Start of disk
+        
+        for r in left:
             seek_sequence.append(r)
             total_seek += abs(current - r)
             current = r
 
     return seek_sequence, total_seek
 
+def clook(requests, head, direction='right'):
+    seek_sequence = []
+    total_seek = 0
+    current = head
+    left = sorted([r for r in requests if r < head])
+    right = sorted([r for r in requests if r >= head])
+
+    if direction == 'left':
+        left_desc = sorted([r for r in requests if r <= head], reverse=True)
+        right_desc = sorted([r for r in requests if r > head], reverse=True)
+
+        for r in left_desc:
+            seek_sequence.append(r)
+            total_seek += abs(current - r)
+            current = r
+        
+        if right_desc:
+            total_seek += abs(current - right_desc[0])
+            current = right_desc[0]
+            seek_sequence.append(current)
+            for r in right_desc[1:]:
+                seek_sequence.append(r)
+                total_seek += abs(current - r)
+                current = r
+    else:
+        for r in right:
+            seek_sequence.append(r)
+            total_seek += abs(current - r)
+            current = r
+        
+        if left:
+            total_seek += abs(current - left[0])
+            current = left[0]
+            seek_sequence.append(current)
+            for r in left[1:]:
+                seek_sequence.append(r)
+                total_seek += abs(current - r)
+                current = r
+
+    return seek_sequence, total_seek
+
 def find_optimal_algorithm(requests, head, cylinders):
-    algos = ['FCFS', 'SSTF', 'SCAN', 'C-SCAN', 'C-LOOK', 'LOOK']
     results = {}
 
     results['FCFS'] = fcfs(requests, head)[1]
@@ -150,8 +193,14 @@ def find_optimal_algorithm(requests, head, cylinders):
         scan(requests, head, cylinders, 'left')[1],
         scan(requests, head, cylinders, 'right')[1]
     )
-    results['C-SCAN'] = cscan(requests, head, cylinders)[1]
-    results['C-LOOK'] = clook(requests, head)[1]
+    results['C-SCAN'] = min(
+        cscan(requests, head, cylinders, 'left')[1],
+        cscan(requests, head, cylinders, 'right')[1]
+    )
+    results['C-LOOK'] = min(
+        clook(requests, head, 'left')[1],
+        clook(requests, head, 'right')[1]
+    )
     results['LOOK'] = min(
         look(requests, head, 'left')[1],
         look(requests, head, 'right')[1]
@@ -181,9 +230,9 @@ def schedule():
     elif algorithm == 'SCAN':
         seq, total = scan(requests, head, cylinders, direction)
     elif algorithm == 'C-SCAN':
-        seq, total = cscan(requests, head, cylinders)
+        seq, total = cscan(requests, head, cylinders, direction)
     elif algorithm == 'C-LOOK':
-        seq, total = clook(requests, head)
+        seq, total = clook(requests, head, direction)
     elif algorithm == 'LOOK':
         seq, total = look(requests, head, direction)
     else:
